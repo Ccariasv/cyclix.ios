@@ -1,28 +1,16 @@
 import 'package:flutter/material.dart';
 import 'register_screen.dart';
 
-void main() {
-  runApp(MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: LoginScreen(),
-    );
-  }
-}
-
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  TextEditingController userController = TextEditingController();
-  TextEditingController passController = TextEditingController();
+  final TextEditingController userController = TextEditingController();
+  final TextEditingController passController = TextEditingController();
 
   String usuarioGuardado = "admin";
   String passwordGuardado = "1234";
@@ -30,47 +18,80 @@ class _LoginScreenState extends State<LoginScreen> {
   void login() {
     if (userController.text == usuarioGuardado &&
         passController.text == passwordGuardado) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Login correcto")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Login correcto")),
+      );
+
+      // Abre la pantalla principal y quita el login de atrás
+      Navigator.pushReplacementNamed(context, '/main');
     } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Datos incorrectos")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Datos incorrectos")),
+      );
     }
+  }
+
+  @override
+  void dispose() {
+    userController.dispose();
+    passController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Padding(
-        padding: EdgeInsets.all(20),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text("LOGIN", style: TextStyle(fontSize: 28)),
+            const Text(
+              "LOGIN",
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 30),
 
             TextField(
               controller: userController,
-              decoration: InputDecoration(labelText: "Usuario"),
+              decoration: const InputDecoration(
+                labelText: "Usuario",
+                border: OutlineInputBorder(),
+              ),
             ),
+
+            const SizedBox(height: 15),
 
             TextField(
               controller: passController,
               obscureText: true,
-              decoration: InputDecoration(labelText: "Contraseña"),
+              decoration: const InputDecoration(
+                labelText: "Contraseña",
+                border: OutlineInputBorder(),
+              ),
             ),
 
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-            ElevatedButton(
-              onPressed: login,
-              child: Text("Ingresar"),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: login,
+                child: const Text("Ingresar"),
+              ),
             ),
 
             TextButton(
               onPressed: () async {
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => RegisterScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => RegisterScreen(),
+                  ),
                 );
 
                 if (result != null) {
@@ -78,10 +99,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     usuarioGuardado = result['user'];
                     passwordGuardado = result['pass'];
                   });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Cuenta creada correctamente"),
+                    ),
+                  );
                 }
               },
-              child: Text("Crear cuenta"),
-            )
+              child: const Text("Crear cuenta"),
+            ),
           ],
         ),
       ),

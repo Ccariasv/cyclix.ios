@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
 import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 
+import 'screens/login.dart';
 import 'screens/main_shell.dart';
 import 'theme/cyclix_colors.dart';
 
@@ -41,7 +42,14 @@ class CyclixApp extends StatelessWidget {
           scrolledUnderElevation: 0,
         ),
       ),
-      home: const MainShell(),
+
+      // Primero se abre el login
+      home: const LoginScreen(),
+
+      // Ruta para ir a la pantalla principal después del login
+      routes: {
+        '/main': (context) => const MainShell(),
+      },
     );
   }
 }
