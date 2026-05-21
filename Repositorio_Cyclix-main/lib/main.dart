@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'services/auth_service.dart';
-import 'screens/Login.dart';
+import 'screens/login.dart';
 import 'screens/main_shell.dart';
 import 'theme/cyclix_colors.dart';
 

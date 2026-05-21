@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../models/rental_station.dart';
+import '../services/cyclix_api_service.dart';
 import '../theme/cyclix_colors.dart';
 import 'qr_scan_screen.dart';
 
@@ -15,6 +16,18 @@ import 'qr_scan_screen.dart';
 const LatLng _kInitialCenter = LatLng(14.6349, -90.5069);
 
 const double _kArrivalRadiusMeters = 45;
+
+class _RouteInfo {
+  const _RouteInfo({
+    required this.points,
+    required this.distanceMeters,
+    required this.durationSeconds,
+  });
+
+  final List<LatLng> points;
+  final double distanceMeters;
+  final double durationSeconds;
+}
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -25,8 +38,9 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
+  final CyclixApiService _api = CyclixApiService();
 
-  static final List<RentalStation> _stations = [
+  static final List<RentalStation> _fallbackStations = [
     RentalStation(
       id: '1',
       name: 'Puesto Zona 1',
@@ -44,12 +58,16 @@ class _MapScreenState extends State<MapScreen> {
     ),
   ];
 
+  List<RentalStation> _stations = _fallbackStations;
   Position? _lastPosition;
   StreamSubscription<Position>? _positionSub;
   RentalStation? _navigatingTo;
   List<LatLng> _routePoints = const [];
+  double? _routeDistanceMeters;
+  double? _routeDurationSeconds;
   bool _locationReady = false;
   bool _routeLoading = false;
+  bool _stationsLoading = false;
 
   List<Marker> get _stationMarkers {
     return _stations.map((s) {
@@ -101,7 +119,36 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    _loadStations();
     _initLocation();
+  }
+
+  Future<void> _loadStations() async {
+    setState(() => _stationsLoading = true);
+    try {
+      final stations = await _api.getStations();
+      final mapped = stations
+          .map(
+            (station) => RentalStation(
+              id: station['id']?.toString() ?? '',
+              name: station['nombre']?.toString() ?? 'Puesto Cyclix',
+              position: LatLng(
+                (station['latitud'] as num).toDouble(),
+                (station['longitud'] as num).toDouble(),
+              ),
+            ),
+          )
+          .where((station) => station.id.isNotEmpty)
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _stations = mapped.isEmpty ? _fallbackStations : mapped;
+        _stationsLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Error cargando puestos desde API: $e');
+      if (mounted) setState(() => _stationsLoading = false);
+    }
   }
 
   Future<void> _initLocation() async {
@@ -167,6 +214,8 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _goToQrScanner(RentalStation station) async {
     _navigatingTo = null;
     _routePoints = const [];
+    _routeDistanceMeters = null;
+    _routeDurationSeconds = null;
     if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -192,9 +241,50 @@ class _MapScreenState extends State<MapScreen> {
     return '${(meters / 1000).toStringAsFixed(1)} km';
   }
 
-  Future<List<LatLng>> _fetchBikeRoute(RentalStation station) async {
+  String _formatTime(double? seconds) {
+    if (seconds == null) return 'Tiempo no disponible';
+    final minutes = (seconds / 60).ceil().clamp(1, 9999);
+    if (minutes < 60) return '$minutes min';
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    return rest == 0 ? '$hours h' : '$hours h $rest min';
+  }
+
+  double? _remainingMetersToTarget() {
+    final target = _navigatingTo;
     final pos = _lastPosition;
-    if (pos == null) return [station.position];
+    if (target == null) return null;
+    if (pos == null) return _routeDistanceMeters;
+    return Geolocator.distanceBetween(
+      pos.latitude,
+      pos.longitude,
+      target.position.latitude,
+      target.position.longitude,
+    );
+  }
+
+  double? _remainingSecondsToTarget() {
+    final remainingMeters = _remainingMetersToTarget();
+    final routeMeters = _routeDistanceMeters;
+    final routeSeconds = _routeDurationSeconds;
+    if (remainingMeters == null) return null;
+    if (routeMeters == null || routeMeters <= 0 || routeSeconds == null) {
+      // Ritmo conservador de bicicleta urbana cuando OSRM no devolvio tiempo.
+      return remainingMeters / 4.2;
+    }
+    final ratio = (remainingMeters / routeMeters).clamp(0.0, 1.0);
+    return routeSeconds * ratio;
+  }
+
+  Future<_RouteInfo> _fetchBikeRoute(RentalStation station) async {
+    final pos = _lastPosition;
+    if (pos == null) {
+      return const _RouteInfo(
+        points: [],
+        distanceMeters: 0,
+        durationSeconds: 0,
+      );
+    }
 
     final start = '${pos.longitude},${pos.latitude}';
     final end = '${station.position.longitude},${station.position.latitude}';
@@ -213,6 +303,12 @@ class _MapScreenState extends State<MapScreen> {
       final routes = body['routes'] as List<dynamic>?;
       final route = routes?.isNotEmpty == true ? routes!.first : null;
       final geometry = route is Map<String, dynamic> ? route['geometry'] : null;
+      final distance = route is Map<String, dynamic>
+          ? (route['distance'] as num?)?.toDouble()
+          : null;
+      final duration = route is Map<String, dynamic>
+          ? (route['duration'] as num?)?.toDouble()
+          : null;
       final coordinates = geometry is Map<String, dynamic>
           ? geometry['coordinates'] as List<dynamic>?
           : null;
@@ -221,13 +317,35 @@ class _MapScreenState extends State<MapScreen> {
         throw Exception('La ruta no devolvio coordenadas');
       }
 
-      return coordinates.map((point) {
+      final points = coordinates.map((point) {
         final pair = point as List<dynamic>;
         return LatLng((pair[1] as num).toDouble(), (pair[0] as num).toDouble());
       }).toList();
+
+      final fallbackDistance = Geolocator.distanceBetween(
+        pos.latitude,
+        pos.longitude,
+        station.position.latitude,
+        station.position.longitude,
+      );
+      return _RouteInfo(
+        points: points,
+        distanceMeters: distance ?? fallbackDistance,
+        durationSeconds: duration ?? fallbackDistance / 4.2,
+      );
     } catch (e) {
       debugPrint('Error obteniendo ruta: $e');
-      return [LatLng(pos.latitude, pos.longitude), station.position];
+      final distance = Geolocator.distanceBetween(
+        pos.latitude,
+        pos.longitude,
+        station.position.latitude,
+        station.position.longitude,
+      );
+      return _RouteInfo(
+        points: [LatLng(pos.latitude, pos.longitude), station.position],
+        distanceMeters: distance,
+        durationSeconds: distance / 4.2,
+      );
     }
   }
 
@@ -237,6 +355,8 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _navigatingTo = station;
         _routePoints = [station.position];
+        _routeDistanceMeters = null;
+        _routeDurationSeconds = null;
       });
       _mapController.move(station.position, 16);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -256,14 +376,16 @@ class _MapScreenState extends State<MapScreen> {
     if (!mounted) return;
 
     setState(() {
-      _routePoints = route;
+      _routePoints = route.points;
+      _routeDistanceMeters = route.distanceMeters;
+      _routeDurationSeconds = route.durationSeconds;
       _routeLoading = false;
     });
 
-    if (route.length >= 2) {
+    if (route.points.length >= 2) {
       _mapController.fitCamera(
         CameraFit.coordinates(
-          coordinates: route,
+          coordinates: route.points,
           padding: const EdgeInsets.fromLTRB(32, 96, 32, 180),
           maxZoom: 16,
         ),
@@ -277,54 +399,84 @@ class _MapScreenState extends State<MapScreen> {
     _mapController.move(LatLng(pos.latitude, pos.longitude), 15);
   }
 
+  RentalStation _nearestStation() {
+    final pos = _lastPosition;
+    final origin = pos == null
+        ? _kInitialCenter
+        : LatLng(pos.latitude, pos.longitude);
+    final stations = [..._stations];
+    stations.sort((a, b) {
+      final da = const Distance().as(LengthUnit.Meter, origin, a.position);
+      final db = const Distance().as(LengthUnit.Meter, origin, b.position);
+      return da.compareTo(db);
+    });
+    return stations.first;
+  }
+
+  Future<void> _goToNearestStation() async {
+    if (_stations.isEmpty) return;
+    final station = _nearestStation();
+    await _showRouteInApp(station);
+  }
+
   void _onStationTapped(RentalStation s) {
     final dist = _distanceTo(s);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(s.name, style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Text(
-                'Distancia aproximada: ${_formatDistance(dist)}',
-                style: Theme.of(ctx).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Al acercarte a menos de ${_kArrivalRadiusMeters.round()} m, '
-                'pasaras automaticamente a la lectura NFC.',
-                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                  color: CyclixColors.instructionGray,
+        return SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              8,
+              24,
+              24 + MediaQuery.paddingOf(ctx).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(s.name, style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                Text(
+                  'Distancia aproximada: ${_formatDistance(dist)}',
+                  style: Theme.of(ctx).textTheme.bodyLarge,
                 ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showRouteInApp(s);
-                },
-                style: FilledButton.styleFrom(
-                  backgroundColor: CyclixColors.brandGreen,
-                  foregroundColor: Colors.white,
+                const SizedBox(height: 8),
+                Text(
+                  'Al acercarte a menos de ${_kArrivalRadiusMeters.round()} m, '
+                  'pasaras automaticamente a la lectura NFC.',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                    color: CyclixColors.instructionGray,
+                  ),
                 ),
-                icon: const Icon(Icons.directions_bike),
-                label: const Text('Mostrar ruta en el mapa'),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _goToQrScanner(s);
-                },
-                child: const Text('Simular llegada (demo sin GPS)'),
-              ),
-            ],
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _showRouteInApp(s);
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: CyclixColors.brandGreen,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: const Icon(Icons.directions_bike),
+                  label: const Text('Mostrar ruta en el mapa'),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _goToQrScanner(s);
+                  },
+                  child: const Text('Simular llegada (demo sin GPS)'),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -340,6 +492,8 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     final userMarker = _userMarker;
+    final remainingMeters = _remainingMetersToTarget();
+    final remainingSeconds = _remainingSecondsToTarget();
 
     return Stack(
       fit: StackFit.expand,
@@ -408,11 +562,24 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        _routeLoading
-                            ? 'Calculando ruta...'
-                            : 'Ruta hacia ${_navigatingTo!.name}',
-                        style: Theme.of(context).textTheme.bodyMedium,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _routeLoading
+                                ? 'Calculando ruta...'
+                                : 'Ruta hacia ${_navigatingTo!.name}',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          if (!_routeLoading)
+                            Text(
+                              'Restan ${_formatDistance(remainingMeters)} • ${_formatTime(remainingSeconds)}',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: CyclixColors.instructionGray,
+                                  ),
+                            ),
+                        ],
                       ),
                     ),
                     IconButton(
@@ -421,6 +588,8 @@ class _MapScreenState extends State<MapScreen> {
                         setState(() {
                           _navigatingTo = null;
                           _routePoints = const [];
+                          _routeDistanceMeters = null;
+                          _routeDurationSeconds = null;
                           _routeLoading = false;
                         });
                       },
@@ -442,6 +611,18 @@ class _MapScreenState extends State<MapScreen> {
             child: const Icon(Icons.my_location),
           ),
         ),
+        Positioned(
+          left: 16,
+          bottom: 16,
+          child: FloatingActionButton.extended(
+            heroTag: 'nearest_station',
+            onPressed: _stationsLoading ? null : _goToNearestStation,
+            backgroundColor: CyclixColors.primaryBlue,
+            foregroundColor: Colors.white,
+            icon: const Icon(Icons.near_me_outlined),
+            label: const Text('Más cercana'),
+          ),
+        ),
         if (!_locationReady)
           Positioned(
             left: 16,
@@ -459,6 +640,13 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ),
+          ),
+        if (_stationsLoading)
+          const Positioned(
+            left: 16,
+            right: 16,
+            top: 72,
+            child: LinearProgressIndicator(color: CyclixColors.primaryBlue),
           ),
       ],
     );

@@ -16,7 +16,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passController = TextEditingController();
   final TextEditingController confirmPassController = TextEditingController();
-  
+
   final AuthService _authService = AuthService();
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -54,16 +54,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
       password: passController.text,
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
     if (result != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Cuenta creada con éxito. Ya puedes iniciar sesión.")),
+        const SnackBar(
+          content: Text("Cuenta creada con éxito. Ya puedes iniciar sesión."),
+        ),
       );
       Navigator.pop(context);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error al crear la cuenta. Inténtalo de nuevo.")),
+        const SnackBar(
+          content: Text("Error al crear la cuenta. Inténtalo de nuevo."),
+        ),
       );
     }
   }
@@ -81,23 +86,51 @@ class _RegisterScreenState extends State<RegisterScreen> {
         padding: const EdgeInsets.all(25),
         child: Column(
           children: [
-            _buildTextField(firstNameController, "Nombre", Icons.person_outline),
+            _buildTextField(
+              firstNameController,
+              "Nombre",
+              Icons.person_outline,
+            ),
             const SizedBox(height: 15),
-            _buildTextField(lastNameController, "Apellido", Icons.person_outline),
+            _buildTextField(
+              lastNameController,
+              "Apellido",
+              Icons.person_outline,
+            ),
             const SizedBox(height: 15),
-            _buildTextField(emailController, "Correo Electrónico", Icons.email_outlined),
+            _buildTextField(
+              emailController,
+              "Correo Electrónico",
+              Icons.email_outlined,
+            ),
             const SizedBox(height: 15),
-            _buildTextField(phoneController, "Teléfono", Icons.phone_android_outlined),
+            _buildTextField(
+              phoneController,
+              "Teléfono",
+              Icons.phone_android_outlined,
+            ),
             const SizedBox(height: 15),
-            _buildPasswordField(passController, "Contraseña", _obscurePassword, () {
-              setState(() => _obscurePassword = !_obscurePassword);
-            }),
+            _buildPasswordField(
+              passController,
+              "Contraseña",
+              _obscurePassword,
+              () {
+                setState(() => _obscurePassword = !_obscurePassword);
+              },
+            ),
             const SizedBox(height: 15),
-            _buildPasswordField(confirmPassController, "Confirmar Contraseña", _obscureConfirmPassword, () {
-              setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
-            }),
+            _buildPasswordField(
+              confirmPassController,
+              "Confirmar Contraseña",
+              _obscureConfirmPassword,
+              () {
+                setState(
+                  () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                );
+              },
+            ),
             const SizedBox(height: 30),
-            
+
             _isLoading
                 ? const CircularProgressIndicator()
                 : SizedBox(
@@ -127,7 +160,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, IconData icon, {bool obscure = false}) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool obscure = false,
+  }) {
     return TextField(
       controller: controller,
       obscureText: obscure,
@@ -135,14 +173,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
-  Widget _buildPasswordField(TextEditingController controller, String label, bool obscure, VoidCallback onToggle) {
+  Widget _buildPasswordField(
+    TextEditingController controller,
+    String label,
+    bool obscure,
+    VoidCallback onToggle,
+  ) {
     return TextField(
       controller: controller,
       obscureText: obscure,
@@ -154,9 +195,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
           onPressed: onToggle,
         ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

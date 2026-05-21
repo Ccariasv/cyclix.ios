@@ -4,36 +4,35 @@ import '../theme/cyclix_colors.dart';
 import '../widgets/cyclix_header.dart';
 import '../widgets/cyclix_primary_button.dart';
 
-class PagoScreen extends StatefulWidget {
-  const PagoScreen({super.key});
+class PagoScreen extends StatelessWidget {
+  const PagoScreen({super.key, required this.trip});
 
-  @override
-  State<PagoScreen> createState() => _PagoScreenState();
-}
+  final Map<String, dynamic> trip;
 
-class _PagoScreenState extends State<PagoScreen> {
-  String _metodoPagoSeleccionado = 'Visa';
+  String _money(Object? value) {
+    final number = num.tryParse(value?.toString() ?? '');
+    return 'Q.${(number ?? 0).toStringAsFixed(2)}';
+  }
 
-  void _snack(String mensaje) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensaje),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        backgroundColor: CyclixColors.accentGreen,
-      ),
-    );
+  String _minutes(Object? value) => '${value ?? 0} min';
+
+  String _duration(Object? secondsValue) {
+    final seconds = int.tryParse(secondsValue?.toString() ?? '') ?? 0;
+    final minutes = (seconds / 60).ceil();
+    return '$minutes min';
   }
 
   @override
   Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
       backgroundColor: CyclixColors.backgroundWhite,
       appBar: const CyclixHeader(showBack: true),
       body: SafeArea(
+        top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 32 + bottom),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -41,51 +40,51 @@ class _PagoScreenState extends State<PagoScreen> {
               const SizedBox(height: 32),
               const _SectionTitle(titulo: 'Resumen del viaje'),
               const SizedBox(height: 8),
-              const _ResumenViaje(),
-              const SizedBox(height: 28),
-              const _SectionTitle(titulo: 'Método de pago'),
-              const SizedBox(height: 8),
-              _MetodoPagoTile(
-                titulo: 'Visa',
-                icono: Icons.credit_card,
-                seleccionado: _metodoPagoSeleccionado == 'Visa',
-                onTap: () => setState(() => _metodoPagoSeleccionado = 'Visa'),
-              ),
-              const SizedBox(height: 8),
-              _MetodoPagoTile(
-                titulo: 'MasterCard',
-                icono: Icons.credit_card_outlined,
-                seleccionado: _metodoPagoSeleccionado == 'MasterCard',
-                onTap: () =>
-                    setState(() => _metodoPagoSeleccionado = 'MasterCard'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () => _snack('Agregar tarjeta — próximamente'),
-                icon: const Icon(Icons.add, color: CyclixColors.accentGreen),
-                label: const Text(
-                  'Agregar nueva tarjeta',
-                  style: TextStyle(color: CyclixColors.accentGreen),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: CyclixColors.accentGreen),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              _ResumenViaje(
+                rows: [
+                  _SummaryRow('Duración', _duration(trip['durationSeconds'])),
+                  _SummaryRow(
+                    'Distancia',
+                    '${num.tryParse(trip['distanceKm']?.toString() ?? '0')?.toStringAsFixed(2) ?? '0.00'} km',
                   ),
+                  _SummaryRow(
+                    'Tarifa aplicada',
+                    trip['pricingRuleName']?.toString() ?? 'Tarifa estándar',
+                  ),
+                  _SummaryRow(
+                    'Minutos cubiertos por plan',
+                    _minutes(trip['subscriptionMinutesCovered']),
+                  ),
+                  _SummaryRow(
+                    'Minutos cobrados',
+                    _minutes(trip['billableMinutes']),
+                  ),
+                  _SummaryRow('Subtotal base', _money(trip['baseFareApplied'])),
+                  _SummaryRow('Extras', _money(trip['extraAmount'])),
+                  _SummaryRow(
+                    'Cobrado al wallet',
+                    _money(trip['walletChargedAmount'] ?? trip['totalAmount']),
+                    highlighted: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+              Text(
+                'El pago se descontó del saldo de tu wallet.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: CyclixColors.instructionGray,
                 ),
               ),
-              const SizedBox(height: 36),
+              const SizedBox(height: 32),
               CyclixPrimaryButton(
-                label: 'Pagar Q.90.00',
+                label: 'Volver al inicio',
                 onPressed: () {
-                  _snack('¡Pago realizado con éxito!');
-                  // Esperamos un momento para que el usuario vea el mensaje y luego volvemos al inicio
-                  Future.delayed(const Duration(seconds: 2), () {
-                    if (mounted) {
-                      Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);
-                    }
-                  });
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/main',
+                    (route) => false,
+                  );
                 },
               ),
             ],
@@ -95,8 +94,6 @@ class _PagoScreenState extends State<PagoScreen> {
     );
   }
 }
-
-// ── Widgets privados ─────────────────────────────────────────────────────────
 
 class _ConfirmacionHeader extends StatelessWidget {
   const _ConfirmacionHeader();
@@ -120,21 +117,11 @@ class _ConfirmacionHeader extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          'Gracias por utilizar\nnuestro servicio',
+          'Viaje finalizado',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
             color: CyclixColors.textDark,
-            height: 1.3,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Tu viaje ha finalizado',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey,
           ),
         ),
       ],
@@ -158,28 +145,34 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+class _SummaryRow {
+  const _SummaryRow(this.label, this.value, {this.highlighted = false});
+
+  final String label;
+  final String value;
+  final bool highlighted;
+}
+
 class _ResumenViaje extends StatelessWidget {
-  const _ResumenViaje();
+  const _ResumenViaje({required this.rows});
+
+  final List<_SummaryRow> rows;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
         color: CyclixColors.cardGrey,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
         children: [
-          const _FilaResumen(label: 'Duración', valor: '45 min'),
-          Divider(height: 1, color: Colors.grey.shade100),
-          const _FilaResumen(label: 'Distancia', valor: '3.2 km'),
-          Divider(height: 1, color: Colors.grey.shade100),
-          const _FilaResumen(
-            label: 'Total a pagar',
-            valor: 'Q.90.00',
-            destacado: true,
-          ),
+          for (var i = 0; i < rows.length; i++) ...[
+            _FilaResumen(row: rows[i]),
+            if (i != rows.length - 1)
+              Divider(height: 1, color: Colors.grey.shade100),
+          ],
         ],
       ),
     );
@@ -187,97 +180,34 @@ class _ResumenViaje extends StatelessWidget {
 }
 
 class _FilaResumen extends StatelessWidget {
-  const _FilaResumen({
-    required this.label,
-    required this.valor,
-    this.destacado = false,
-  });
-  final String label;
-  final String valor;
-  final bool destacado;
+  const _FilaResumen({required this.row});
+  final _SummaryRow row;
 
   @override
   Widget build(BuildContext context) {
-    final style = destacado
+    final style = row.highlighted
         ? const TextStyle(
-      fontWeight: FontWeight.bold,
-      color: CyclixColors.accentGreen,
-      fontSize: 15,
-    )
+            fontWeight: FontWeight.bold,
+            color: CyclixColors.accentGreen,
+            fontSize: 15,
+          )
         : const TextStyle(color: CyclixColors.textDark, fontSize: 14);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: style),
-          Text(valor, style: style),
-        ],
-      ),
-    );
-  }
-}
-
-class _MetodoPagoTile extends StatelessWidget {
-  const _MetodoPagoTile({
-    required this.titulo,
-    required this.icono,
-    required this.seleccionado,
-    required this.onTap,
-  });
-  final String titulo;
-  final IconData icono;
-  final bool seleccionado;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: CyclixColors.backgroundWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color:
-            seleccionado ? CyclixColors.accentGreen : Colors.grey.shade200,
-            width: seleccionado ? 1.5 : 1,
+          Expanded(child: Text(row.label, style: style)),
+          const SizedBox(width: 16),
+          Flexible(
+            child: Text(
+              row.value,
+              textAlign: TextAlign.end,
+              style: style,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icono,
-              color: seleccionado
-                  ? CyclixColors.accentGreen
-                  : Colors.grey,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                titulo,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: seleccionado ? CyclixColors.textDark : Colors.black54,
-                ),
-              ),
-            ),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: seleccionado
-                  ? const Icon(Icons.check_circle_rounded,
-                  key: ValueKey('check'),
-                  color: CyclixColors.accentGreen)
-                  : Icon(Icons.circle_outlined,
-                  key: const ValueKey('empty'),
-                  color: Colors.grey.shade300),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

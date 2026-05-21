@@ -31,8 +31,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _initBiometrics() async {
-    final hasLogin = await _authService.hasPreviousLogin();
-    if (!mounted || !hasLogin) return;
+    final canUseSavedLogin = await _authService.hasBiometricLoginAvailable();
+    if (!mounted || !canUseSavedLogin) return;
 
     try {
       final isSupported = await auth.isDeviceSupported();
@@ -62,22 +62,34 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted || !didAuthenticate) return;
 
-      final token = await _authService.getSavedToken();
       final userData = await _authService.getUserData();
+      final email = await _authService.getSavedEmail();
+      final password = await _authService.getSavedPassword();
 
       if (!mounted) return;
 
-      if (token != null && userData != null) {
+      if (userData != null) {
         _showWelcomeAndNavigate(userData['firstName'] ?? 'Usuario');
-      } else {
-        await _authService.logout();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Tu sesión expiró. Inicia sesión de nuevo."),
-          ),
-        );
+        return;
       }
+
+      if (email != null && password != null) {
+        setState(() => _isLoading = true);
+        final result = await _authService.login(email, password);
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        if (result != null) {
+          _showWelcomeAndNavigate(result['firstName'] ?? 'Usuario');
+          return;
+        }
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("No se pudo renovar tu sesión biométrica."),
+        ),
+      );
     } catch (e) {
       debugPrint('Error de biometría: $e');
       if (!mounted) return;
@@ -169,15 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: CyclixColors.textDark,
                   ),
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  "MUEVE TU MUNDO",
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[600],
-                  ),
-                ),
+
                 const SizedBox(height: 40),
                 TextField(
                   controller: userController,

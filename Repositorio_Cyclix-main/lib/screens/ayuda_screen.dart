@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/cyclix_colors.dart';
 import '../widgets/cyclix_header.dart';
 import '../widgets/cyclix_primary_button.dart';
+import 'soporte_screen.dart';
 
 class AyudaScreen extends StatelessWidget {
   const AyudaScreen({super.key});
@@ -29,18 +30,6 @@ class AyudaScreen extends StatelessWidget {
           'Reporta el problema desde la sección Contacto o llama a nuestra línea de atención al cliente.',
     ),
   ];
-
-  void _snack(BuildContext context, String mensaje) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensaje),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        backgroundColor: CyclixColors.brandGreen,
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,15 +61,18 @@ class AyudaScreen extends StatelessWidget {
               Expanded(
                 child: ListView.separated(
                   itemCount: _faqs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 8),
                   itemBuilder: (context, i) => _FaqTile(faq: _faqs[i]),
                 ),
               ),
               const SizedBox(height: 20),
               CyclixPrimaryButton(
                 label: 'Contactar soporte',
-                onPressed: () =>
-                    _snack(context, 'Contactar soporte — próximamente'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SoporteScreen()),
+                ),
               ),
             ],
           ),

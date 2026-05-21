@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -9,6 +10,7 @@ class AuthService {
   static const String _savedEmailKey = 'saved_email';
   static const String _savedPasswordKey = 'saved_password';
   static const String _hasLoggedInKey = 'has_logged_in';
+  static const String _profilePhotoPathKey = 'profile_photo_path';
 
   final _storage = const FlutterSecureStorage();
 
@@ -52,7 +54,7 @@ class AuthService {
       final userData = await getUserData();
       return token != null && token.isNotEmpty && userData != null;
     } catch (e) {
-      print('Error leyendo sesion guardada: $e');
+      debugPrint('Error leyendo sesion guardada: $e');
       return false;
     }
   }
@@ -61,12 +63,35 @@ class AuthService {
   Future<String?> getSavedPassword() async =>
       _storage.read(key: _savedPasswordKey);
 
-  Future<void> logout() async {
+  Future<bool> hasBiometricLoginAvailable() async {
+    final email = await getSavedEmail();
+    final password = await getSavedPassword();
+    return email != null &&
+        email.isNotEmpty &&
+        password != null &&
+        password.isNotEmpty;
+  }
+
+  Future<void> saveProfilePhotoPath(String path) async {
+    await _storage.write(key: _profilePhotoPathKey, value: path);
+  }
+
+  Future<String?> getProfilePhotoPath() async {
+    return _storage.read(key: _profilePhotoPathKey);
+  }
+
+  Future<void> removeProfilePhotoPath() async {
+    await _storage.delete(key: _profilePhotoPathKey);
+  }
+
+  Future<void> logout({bool keepBiometricLogin = true}) async {
     await _storage.delete(key: _userDataKey);
     await _storage.delete(key: _authTokenKey);
-    await _storage.delete(key: _savedEmailKey);
-    await _storage.delete(key: _savedPasswordKey);
     await _storage.delete(key: _hasLoggedInKey);
+    if (!keepBiometricLogin) {
+      await _storage.delete(key: _savedEmailKey);
+      await _storage.delete(key: _savedPasswordKey);
+    }
   }
 
   Future<Map<String, dynamic>?> login(String email, String password) async {
@@ -90,7 +115,7 @@ class AuthService {
         final Map<String, dynamic> fullData = {
           'email': email,
           'token': token,
-          ...?(userDetails as Map<String, dynamic>?),
+          ...?userDetails,
         };
 
         await saveUser(fullData, password);
@@ -98,7 +123,7 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print('Error de conexión: $e');
+      debugPrint('Error de conexión: $e');
       return null;
     }
   }
@@ -127,7 +152,7 @@ class AuthService {
         }
       }
     } catch (e) {
-      print('Error al obtener detalles del usuario: $e');
+      debugPrint('Error al obtener detalles del usuario: $e');
     }
     return null;
   }

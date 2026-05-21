@@ -32,6 +32,8 @@
 	<string>Cyclix usa Face ID para iniciar sesión de forma segura.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Cyclix necesita tu ubicación para mostrarte en el mapa y calcular la distancia a los puestos de renta.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Cyclix usa tu galería únicamente para seleccionar tu foto de perfil.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

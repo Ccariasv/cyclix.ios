@@ -1,7 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+
 import '../services/auth_service.dart';
 import '../theme/cyclix_colors.dart';
+import '../widgets/cyclix_header.dart';
 
 class DatosUsuarioScreen extends StatefulWidget {
   const DatosUsuarioScreen({super.key});
@@ -12,7 +18,9 @@ class DatosUsuarioScreen extends StatefulWidget {
 
 class _DatosUsuarioScreenState extends State<DatosUsuarioScreen> {
   final AuthService _authService = AuthService();
+  final ImagePicker _imagePicker = ImagePicker();
   Map<String, dynamic>? userData;
+  String? _profilePhotoPath;
 
   @override
   void initState() {
@@ -22,35 +30,117 @@ class _DatosUsuarioScreenState extends State<DatosUsuarioScreen> {
 
   Future<void> _loadUserData() async {
     final data = await _authService.getUserData();
+    final photoPath = await _authService.getProfilePhotoPath();
+    if (!mounted) return;
     setState(() {
       userData = data;
+      _profilePhotoPath = photoPath;
     });
+  }
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    final image = await _imagePicker.pickImage(
+      source: source,
+      maxWidth: 900,
+      imageQuality: 82,
+    );
+    if (image == null) return;
+    final directory = await getApplicationDocumentsDirectory();
+    final extension = image.path.split('.').last;
+    final savedFile = await File(image.path).copy(
+      '${directory.path}/cyclix_profile_${DateTime.now().millisecondsSinceEpoch}.$extension',
+    );
+    await _deleteCurrentPhotoFile();
+    await _authService.saveProfilePhotoPath(savedFile.path);
+    if (!mounted) return;
+    setState(() => _profilePhotoPath = savedFile.path);
+  }
+
+  Future<void> _removePhoto() async {
+    await _deleteCurrentPhotoFile();
+    await _authService.removeProfilePhotoPath();
+    if (!mounted) return;
+    setState(() => _profilePhotoPath = null);
+  }
+
+  Future<void> _deleteCurrentPhotoFile() async {
+    final current = _profilePhotoPath;
+    if (current == null) return;
+    final file = File(current);
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
+  void _showPhotoOptions() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              8,
+              20,
+              20 + MediaQuery.paddingOf(context).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_library_outlined),
+                  title: const Text('Elegir desde galería'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickPhoto(ImageSource.gallery);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Tomar foto'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickPhoto(ImageSource.camera);
+                  },
+                ),
+                if (_profilePhotoPath != null)
+                  ListTile(
+                    leading: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.redAccent,
+                    ),
+                    title: const Text('Quitar foto'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _removePhoto();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: CyclixColors.backgroundWhite,
-      appBar: AppBar(
-        title: Text(
-          "MI CUENTA",
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.bold,
-            color: CyclixColors.primaryBlue,
-          ),
-        ),
-        iconTheme: const IconThemeData(color: CyclixColors.primaryBlue),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-      ),
+      appBar: const CyclixHeader(showBack: true),
       body: userData == null
           ? const Center(
               child: CircularProgressIndicator(color: CyclixColors.primaryBlue),
             )
           : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24.0,
-                vertical: 20.0,
+              padding: EdgeInsets.fromLTRB(
+                24,
+                20,
+                24,
+                32 + MediaQuery.paddingOf(context).bottom,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -58,22 +148,73 @@ class _DatosUsuarioScreenState extends State<DatosUsuarioScreen> {
                   Center(
                     child: Column(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: CyclixColors.primaryBlue,
-                              width: 2,
-                            ),
+                        GestureDetector(
+                          onTap: _showPhotoOptions,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: CyclixColors.primaryBlue,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: CircleAvatar(
+                                  radius: 55,
+                                  backgroundColor: CyclixColors.cardGrey,
+                                  backgroundImage:
+                                      _profilePhotoPath != null &&
+                                          File(_profilePhotoPath!).existsSync()
+                                      ? FileImage(File(_profilePhotoPath!))
+                                      : null,
+                                  child:
+                                      _profilePhotoPath == null ||
+                                          !File(_profilePhotoPath!).existsSync()
+                                      ? const Icon(
+                                          Icons.person,
+                                          size: 70,
+                                          color: CyclixColors.primaryBlue,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: CyclixColors.accentGreen,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 3,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          child: const CircleAvatar(
-                            radius: 55,
-                            backgroundColor: CyclixColors.cardGrey,
-                            child: Icon(
-                              Icons.person,
-                              size: 70,
-                              color: CyclixColors.primaryBlue,
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton.icon(
+                          onPressed: _showPhotoOptions,
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: Text(
+                            _profilePhotoPath == null
+                                ? 'Agregar foto'
+                                : 'Cambiar o quitar foto',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -181,14 +322,14 @@ class _DatosUsuarioScreenState extends State<DatosUsuarioScreen> {
       decoration: BoxDecoration(
         color: CyclixColors.cardGrey,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: Column(children: children),
     );
   }
 
   Widget _buildDivider() {
-    return Divider(color: Colors.grey.withOpacity(0.2), height: 20);
+    return Divider(color: Colors.grey.withValues(alpha: 0.2), height: 20);
   }
 
   Widget _buildInfoTile(IconData icon, String label, String value) {

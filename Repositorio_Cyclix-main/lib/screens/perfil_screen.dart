@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/auth_service.dart';
@@ -13,6 +15,7 @@ class PerfilScreen extends StatefulWidget {
 class _PerfilScreenState extends State<PerfilScreen> {
   final AuthService _authService = AuthService();
   Map<String, dynamic>? userData;
+  String? _profilePhotoPath;
 
   @override
   void initState() {
@@ -22,8 +25,11 @@ class _PerfilScreenState extends State<PerfilScreen> {
 
   Future<void> _loadUserData() async {
     final data = await _authService.getUserData();
+    final photoPath = await _authService.getProfilePhotoPath();
+    if (!mounted) return;
     setState(() {
       userData = data;
+      _profilePhotoPath = photoPath;
     });
   }
 
@@ -32,9 +38,16 @@ class _PerfilScreenState extends State<PerfilScreen> {
     return Scaffold(
       backgroundColor: CyclixColors.backgroundWhite,
       body: userData == null
-          ? const Center(child: CircularProgressIndicator(color: CyclixColors.primaryBlue))
+          ? const Center(
+              child: CircularProgressIndicator(color: CyclixColors.primaryBlue),
+            )
           : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
+              padding: EdgeInsets.fromLTRB(
+                24,
+                40,
+                24,
+                32 + MediaQuery.paddingOf(context).bottom,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -45,12 +58,28 @@ class _PerfilScreenState extends State<PerfilScreen> {
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: CyclixColors.primaryBlue, width: 2),
+                            border: Border.all(
+                              color: CyclixColors.primaryBlue,
+                              width: 2,
+                            ),
                           ),
-                          child: const CircleAvatar(
+                          child: CircleAvatar(
                             radius: 55,
                             backgroundColor: CyclixColors.cardGrey,
-                            child: Icon(Icons.person, size: 70, color: CyclixColors.primaryBlue),
+                            backgroundImage:
+                                _profilePhotoPath != null &&
+                                    File(_profilePhotoPath!).existsSync()
+                                ? FileImage(File(_profilePhotoPath!))
+                                : null,
+                            child:
+                                _profilePhotoPath == null ||
+                                    !File(_profilePhotoPath!).existsSync()
+                                ? const Icon(
+                                    Icons.person,
+                                    size: 70,
+                                    color: CyclixColors.primaryBlue,
+                                  )
+                                : null,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -64,9 +93,14 @@ class _PerfilScreenState extends State<PerfilScreen> {
                         ),
                         const SizedBox(height: 4),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
-                            color: CyclixColors.accentGreen.withOpacity(0.1),
+                            color: CyclixColors.accentGreen.withValues(
+                              alpha: 0.1,
+                            ),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
@@ -92,12 +126,23 @@ class _PerfilScreenState extends State<PerfilScreen> {
                   ),
                   const SizedBox(height: 20),
                   _buildInfoCard([
-                    _buildInfoTile(Icons.person_outline, "Nombre Completo", 
-                        "${userData!['firstName'] ?? ''} ${userData!['lastName'] ?? ''}"),
+                    _buildInfoTile(
+                      Icons.person_outline,
+                      "Nombre Completo",
+                      "${userData!['firstName'] ?? ''} ${userData!['lastName'] ?? ''}",
+                    ),
                     _buildDivider(),
-                    _buildInfoTile(Icons.email_outlined, "Correo Electrónico", userData!['email'] ?? 'No disponible'),
+                    _buildInfoTile(
+                      Icons.email_outlined,
+                      "Correo Electrónico",
+                      userData!['email'] ?? 'No disponible',
+                    ),
                     _buildDivider(),
-                    _buildInfoTile(Icons.phone_android_outlined, "Teléfono", userData!['phone'] ?? 'No disponible'),
+                    _buildInfoTile(
+                      Icons.phone_android_outlined,
+                      "Teléfono",
+                      userData!['phone'] ?? 'No disponible',
+                    ),
                   ]),
                   const SizedBox(height: 30),
                   Text(
@@ -110,7 +155,11 @@ class _PerfilScreenState extends State<PerfilScreen> {
                   ),
                   const SizedBox(height: 20),
                   _buildInfoCard([
-                    _buildInfoTile(Icons.verified_user_outlined, "Estado del Usuario", "ACTIVO"),
+                    _buildInfoTile(
+                      Icons.verified_user_outlined,
+                      "Estado del Usuario",
+                      "ACTIVO",
+                    ),
                   ]),
                   const SizedBox(height: 20),
                 ],
@@ -126,14 +175,14 @@ class _PerfilScreenState extends State<PerfilScreen> {
       decoration: BoxDecoration(
         color: CyclixColors.cardGrey,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withOpacity(0.1)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
       ),
       child: Column(children: children),
     );
   }
 
   Widget _buildDivider() {
-    return Divider(color: Colors.grey.withOpacity(0.2), height: 20);
+    return Divider(color: Colors.grey.withValues(alpha: 0.2), height: 20);
   }
 
   Widget _buildInfoTile(IconData icon, String label, String value) {

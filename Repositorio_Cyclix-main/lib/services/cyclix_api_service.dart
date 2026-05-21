@@ -1,0 +1,352 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import 'auth_service.dart';
+
+class CyclixApiException implements Exception {
+  const CyclixApiException(this.message, {this.statusCode});
+
+  final String message;
+  final int? statusCode;
+
+  @override
+  String toString() => message;
+}
+
+class CyclixApiService {
+  CyclixApiService({AuthService? authService})
+    : _authService = authService ?? AuthService();
+
+  static const String baseUrl = AuthService.baseUrl;
+
+  final AuthService _authService;
+
+  Future<Map<String, String>> _headers({bool jsonBody = true}) async {
+    final token = await _authService.getSavedToken();
+    return {
+      if (jsonBody) 'Content-Type': 'application/json',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  Future<dynamic> get(String path) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl$path'),
+      headers: await _headers(),
+    );
+    return _decodeResponse(response);
+  }
+
+  Future<dynamic> post(String path, Map<String, dynamic> body) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl$path'),
+      headers: await _headers(),
+      body: jsonEncode(body),
+    );
+    return _decodeResponse(response);
+  }
+
+  Future<dynamic> put(String path, Map<String, dynamic> body) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl$path'),
+      headers: await _headers(),
+      body: jsonEncode(body),
+    );
+    return _decodeResponse(response);
+  }
+
+  Future<dynamic> patch(String path, Map<String, dynamic> body) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl$path'),
+      headers: await _headers(),
+      body: jsonEncode(body),
+    );
+    return _decodeResponse(response);
+  }
+
+  dynamic _decodeResponse(http.Response response) {
+    final text = utf8.decode(response.bodyBytes);
+    final dynamic decoded = text.isEmpty ? null : jsonDecode(text);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (decoded is Map<String, dynamic> && decoded.containsKey('success')) {
+        if (decoded['success'] == true) return decoded['data'];
+        throw CyclixApiException(
+          decoded['message']?.toString() ?? 'La API rechazó la solicitud.',
+          statusCode: response.statusCode,
+        );
+      }
+      return decoded;
+    }
+
+    String message = 'Error ${response.statusCode} al comunicarse con Cyclix.';
+    if (decoded is Map<String, dynamic>) {
+      message =
+          decoded['message']?.toString() ??
+          decoded['error']?.toString() ??
+          decoded['detail']?.toString() ??
+          message;
+    }
+
+    throw CyclixApiException(message, statusCode: response.statusCode);
+  }
+
+  Future<List<Map<String, dynamic>>> getStations({
+    bool onlyActive = true,
+  }) async {
+    final data = await get(onlyActive ? '/puestos/activos' : '/puestos');
+    return _asMapList(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getAvailableStations() async {
+    final data = await get('/puestos/disponibles');
+    return _asMapList(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getBikes({String? estado}) async {
+    final path = estado == null
+        ? '/bicicletas'
+        : '/bicicletas/filtrar?estado=$estado';
+    final data = await get(path);
+    return _asMapList(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getBikesByStation(
+    Object stationId, {
+    bool onlyAvailable = false,
+  }) async {
+    final suffix = onlyAvailable ? '/disponibles' : '';
+    final data = await get('/bicicletas/puesto/$stationId$suffix');
+    return _asMapList(data);
+  }
+
+  Future<Map<String, dynamic>> getBikeByQr(String code) async {
+    final encoded = Uri.encodeComponent(code);
+    final data = await get('/bicicletas/qr/$encoded');
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getBikeById(Object id) async {
+    final data = await get('/bicicletas/$id');
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> createTrip({
+    required Object bikeId,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final data = await post('/trips', {
+      'bikeId': int.tryParse(bikeId.toString()) ?? bikeId,
+      'startLatitude': latitude,
+      'startLongitude': longitude,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> finishTrip({
+    required Object tripId,
+    required double latitude,
+    required double longitude,
+    double? distanceKm,
+  }) async {
+    final body = <String, dynamic>{
+      'endLatitude': latitude,
+      'endLongitude': longitude,
+    };
+    if (distanceKm != null) {
+      body['distanceKm'] = distanceKm;
+    }
+    final data = await put('/trips/$tripId/finish', body);
+    return _asMap(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getMyTrips() async {
+    final data = await get('/trips/my');
+    return _asMapList(data);
+  }
+
+  Future<Map<String, dynamic>> getWallet() async {
+    final data = await get('/wallet/my');
+    return _asMap(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getWalletTransactions() async {
+    final data = await get('/wallet/my/transactions');
+    return _asMapList(data);
+  }
+
+  Future<Map<String, dynamic>> topUpWallet({
+    required Object userId,
+    required double amount,
+  }) async {
+    final data = await post('/wallet/top-up', {
+      'userId': int.tryParse(userId.toString()) ?? userId,
+      'amount': amount,
+    });
+    return _asMap(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getMyTickets() async {
+    final data = await get('/support/tickets/my');
+    return _asMapList(data);
+  }
+
+  Future<Map<String, dynamic>> createTicket({
+    required String category,
+    required String priority,
+    required String title,
+    required String description,
+    Object? bikeId,
+    Object? tripId,
+    Object? paymentId,
+  }) async {
+    final data = await post('/support/tickets', {
+      if (bikeId != null) 'bikeId': int.tryParse(bikeId.toString()) ?? bikeId,
+      if (tripId != null) 'tripId': int.tryParse(tripId.toString()) ?? tripId,
+      if (paymentId != null)
+        'paymentId': int.tryParse(paymentId.toString()) ?? paymentId,
+      'category': category,
+      'priority': priority,
+      'title': title,
+      'description': description,
+    });
+    return _asMap(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getPricingRules() async {
+    final data = await get('/admin/pricing/rules');
+    return _asMapList(data);
+  }
+
+  Future<Map<String, dynamic>?> getCurrentPricingRule() async {
+    final rules = await getPricingRules();
+    if (rules.isEmpty) return null;
+
+    final now = DateTime.now();
+    final candidates = rules.where((rule) {
+      if (rule['active'] == false) return false;
+      if (!_matchesDate(rule['startDate'], rule['endDate'], now)) {
+        return false;
+      }
+      if (!_matchesTime(rule['startTime'], rule['endTime'], now)) {
+        return false;
+      }
+      if (!_matchesDay(rule['daysOfWeek'], now)) return false;
+      return true;
+    }).toList();
+
+    if (candidates.isEmpty) return rules.first;
+    candidates.sort((a, b) {
+      final priorityA = int.tryParse(a['priority']?.toString() ?? '') ?? 0;
+      final priorityB = int.tryParse(b['priority']?.toString() ?? '') ?? 0;
+      return priorityB.compareTo(priorityA);
+    });
+    return candidates.first;
+  }
+
+  Future<List<Map<String, dynamic>>> getHolidays() async {
+    final data = await get('/admin/pricing/holidays');
+    return _asMapList(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getSubscriptionPlans() async {
+    final data = await get('/admin/subscriptions/plans');
+    return _asMapList(data);
+  }
+
+  Future<List<Map<String, dynamic>>> getUsers() async {
+    final data = await get('/get/user');
+    return _asMapList(data);
+  }
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    throw const CyclixApiException('La API devolvió un formato inesperado.');
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic data) {
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+    return const [];
+  }
+
+  bool _matchesDate(Object? startValue, Object? endValue, DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    final start = DateTime.tryParse(startValue?.toString() ?? '');
+    final end = DateTime.tryParse(endValue?.toString() ?? '');
+    if (start != null &&
+        today.isBefore(DateTime(start.year, start.month, start.day))) {
+      return false;
+    }
+    if (end != null && today.isAfter(DateTime(end.year, end.month, end.day))) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _matchesTime(Object? startValue, Object? endValue, DateTime now) {
+    final start = _parseTimeOfDay(startValue);
+    final end = _parseTimeOfDay(endValue);
+    if (start == null || end == null) return true;
+    if (start == end) return true;
+
+    final currentMinutes = now.hour * 60 + now.minute;
+    final startMinutes = start.hour * 60 + start.minute;
+    final endMinutes = end.hour * 60 + end.minute;
+
+    if (startMinutes < endMinutes) {
+      return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    }
+    return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+  }
+
+  bool _matchesDay(Object? daysValue, DateTime now) {
+    final raw = daysValue?.toString();
+    if (raw == null || raw.trim().isEmpty) return true;
+    const days = [
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+      'SUNDAY',
+    ];
+    final current = days[now.weekday - 1];
+    final allowed = raw.split(',').map((item) => item.trim().toUpperCase());
+    return allowed.contains(current);
+  }
+
+  _ClockTime? _parseTimeOfDay(Object? value) {
+    final raw = value?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    final parts = raw.split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    return _ClockTime(hour, minute);
+  }
+}
+
+class _ClockTime {
+  const _ClockTime(this.hour, this.minute);
+
+  final int hour;
+  final int minute;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _ClockTime && other.hour == hour && other.minute == minute;
+  }
+
+  @override
+  int get hashCode => Object.hash(hour, minute);
+}

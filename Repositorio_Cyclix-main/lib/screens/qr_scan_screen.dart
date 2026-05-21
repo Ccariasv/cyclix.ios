@@ -9,6 +9,7 @@ import 'package:nfc_manager/nfc_manager.dart';
 import 'package:nfc_manager/nfc_manager_android.dart';
 
 import '../models/bike_info.dart';
+import '../services/cyclix_api_service.dart';
 import '../theme/cyclix_colors.dart';
 import '../widgets/cyclix_header.dart';
 import '../widgets/cyclix_primary_button.dart';
@@ -36,11 +37,23 @@ class _QrScanScreenState extends State<QrScanScreen> {
 
   bool _handled = false;
   bool _isScanning = false;
+  bool _loadingBike = false;
   String _message = 'Acerca tu teléfono al tag NFC de la bicicleta.';
+  final CyclixApiService _api = CyclixApiService();
 
   static const BikeInfo _exampleBike = BikeInfo(
     id: '1234',
-    costPerMinuteDisplay: 'Costo Q.1.00 / min',
+    costPerMinuteDisplay:
+        'Tarifa estándar: Q20.00 incluye 120 min · Extra Q5.00 / 30 min',
+    costPerMinute: 20 / 120,
+    code: 'DEMO-1234',
+    brand: 'Cyclix',
+    model: 'Demo urbana',
+    color: 'Verde',
+    type: 'URBANA',
+    status: 'DISPONIBLE',
+    stationName: 'Modo demo',
+    isDemo: true,
   );
 
   @override
@@ -108,7 +121,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
       _isScanning = false;
       _message = 'Tag leído.';
     });
-    _openDetailFromPayload(raw ?? _exampleBike.id);
+    await _openDetailFromPayload(raw ?? _exampleBike.id);
   }
 
   Future<String?> _readNdefPayload(NfcTag tag) async {
@@ -182,12 +195,57 @@ class _QrScanScreenState extends State<QrScanScreen> {
     return bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
   }
 
-  void _openDetailFromPayload(String raw) {
+  Future<void> _openDetailFromPayload(String raw, {bool demo = false}) async {
     final bikeId = _bikeIdFromPayload(raw);
-    final bike = BikeInfo(
-      id: bikeId,
-      costPerMinuteDisplay: _exampleBike.costPerMinuteDisplay,
-    );
+    if (demo) {
+      if (!mounted) return;
+      Navigator.of(context)
+          .push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => const BikeDetailScreen(bike: _exampleBike),
+            ),
+          )
+          .then((_) {
+            if (mounted) {
+              setState(() {
+                _handled = false;
+                _message = _usesNfc
+                    ? 'Acerca tu teléfono al tag NFC de la bicicleta.'
+                    : 'Apunta la cámara al código QR de la bicicleta.';
+              });
+            }
+          });
+      return;
+    }
+
+    setState(() {
+      _loadingBike = true;
+      _message = 'Consultando bicicleta en Cyclix...';
+    });
+
+    BikeInfo bike;
+    try {
+      final data = bikeId.startsWith('CYCLIX-BICI-')
+          ? await _api.getBikeByQr(bikeId)
+          : await _api.getBikeById(bikeId);
+      bike = BikeInfo.fromJson(data);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _handled = false;
+        _loadingBike = false;
+        _message = _usesNfc
+            ? 'Acerca tu teléfono al tag NFC de la bicicleta.'
+            : 'Apunta la cámara al código QR de la bicicleta.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se encontró la bicicleta en la API. $e')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _loadingBike = false);
 
     Navigator.of(context)
         .push<void>(
@@ -220,7 +278,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
   void _simulateScan() {
     if (_handled) return;
     _handled = true;
-    _openDetailFromPayload(_exampleBike.id);
+    _openDetailFromPayload(_exampleBike.id, demo: true);
   }
 
   Widget _buildScannerArea(BuildContext context) {
@@ -302,6 +360,12 @@ class _QrScanScreenState extends State<QrScanScreen> {
                   color: CyclixColors.primaryBlue,
                 ),
               ],
+              if (_loadingBike) ...[
+                const SizedBox(height: 24),
+                const CircularProgressIndicator(
+                  color: CyclixColors.primaryBlue,
+                ),
+              ],
             ],
           ),
         ),
@@ -333,7 +397,8 @@ class _QrScanScreenState extends State<QrScanScreen> {
             24,
             0,
             24,
-            widget.embeddedInShell ? 16 : 24,
+            MediaQuery.paddingOf(context).bottom +
+                (widget.embeddedInShell ? 16 : 24),
           ),
           child: Column(
             children: [
