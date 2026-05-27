@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'services/auth_service.dart';
 import 'screens/login.dart';
 import 'screens/main_shell.dart';
+import 'screens/maintenance_shell.dart';
 import 'theme/cyclix_colors.dart';
 
 void main() {
@@ -86,7 +87,10 @@ class CyclixApp extends StatelessWidget {
       home: const _AuthGate(),
 
       // Ruta para ir a la pantalla principal después del login
-      routes: {'/main': (context) => const MainShell()},
+      routes: {
+        '/main': (context) => const MainShell(),
+        '/maintenance': (context) => const MaintenanceShell(),
+      },
     );
   }
 }
@@ -99,28 +103,49 @@ class _AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<_AuthGate> {
-  late final Future<bool> _sessionFuture = AuthService()
-      .hasPreviousLogin()
-      .timeout(const Duration(seconds: 3), onTimeout: () => false);
+  late final Future<_StartupDestination> _sessionFuture = _resolveDestination();
+
+  Future<_StartupDestination> _resolveDestination() async {
+    final authService = AuthService();
+    final hasSession = await authService.hasPreviousLogin().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => false,
+    );
+    if (!hasSession) return _StartupDestination.login;
+
+    final isMaintenance = await authService.isMaintenanceUser().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => false,
+    );
+    return isMaintenance
+        ? _StartupDestination.maintenance
+        : _StartupDestination.main;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
+    return FutureBuilder<_StartupDestination>(
       future: _sessionFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const _StartupScreen();
         }
 
-        if (snapshot.data == true) {
-          return const MainShell();
+        switch (snapshot.data) {
+          case _StartupDestination.maintenance:
+            return const MaintenanceShell();
+          case _StartupDestination.main:
+            return const MainShell();
+          case _StartupDestination.login:
+          case null:
+            return const LoginScreen();
         }
-
-        return const LoginScreen();
       },
     );
   }
 }
+
+enum _StartupDestination { login, main, maintenance }
 
 class _StartupScreen extends StatelessWidget {
   const _StartupScreen();

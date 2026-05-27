@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/maintenance_order.dart';
 import 'auth_service.dart';
 
 class CyclixApiException implements Exception {
@@ -259,6 +260,53 @@ class CyclixApiService {
   Future<List<Map<String, dynamic>>> getUsers() async {
     final data = await get('/get/user');
     return _asMapList(data);
+  }
+
+  Future<List<MaintenanceOrder>> getMyMaintenanceOrders() async {
+    final data = await get('/maintenance/orders/my');
+    return _asMapList(data).map(MaintenanceOrder.fromJson).toList();
+  }
+
+  Future<MaintenanceOrder> getMaintenanceOrder(Object id) async {
+    final data = await get('/maintenance/orders/$id');
+    return MaintenanceOrder.fromJson(_asMap(data));
+  }
+
+  Future<MaintenanceOrder> updateMaintenanceProgress({
+    required Object id,
+    String? status,
+    String? diagnosis,
+    String? resolutionNotes,
+    String? currentLocation,
+    int? estimatedMinutes,
+    String? note,
+  }) async {
+    final body = <String, dynamic>{
+      'status': ?status,
+      'diagnosis': ?diagnosis,
+      'resolutionNotes': ?resolutionNotes,
+      'currentLocation': ?currentLocation,
+      'estimatedMinutes': ?estimatedMinutes,
+      'note': ?note,
+    };
+    final data = await patch('/maintenance/orders/$id/progress', body);
+    return MaintenanceOrder.fromJson(_asMap(data));
+  }
+
+  Future<MaintenanceOrder> resolveMaintenanceOrder({
+    required Object id,
+    required String resultStatus,
+    required String resolutionNotes,
+    String? outOfServiceReason,
+    String? currentLocation,
+  }) async {
+    final data = await patch('/maintenance/orders/$id/resolve', {
+      'resultStatus': resultStatus,
+      'resolutionNotes': resolutionNotes,
+      'outOfServiceReason': ?outOfServiceReason,
+      'currentLocation': ?currentLocation,
+    });
+    return MaintenanceOrder.fromJson(_asMap(data));
   }
 
   Map<String, dynamic> _asMap(dynamic data) {

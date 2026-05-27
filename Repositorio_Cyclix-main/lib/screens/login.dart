@@ -101,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showWelcomeAndNavigate(String name) {
+  Future<void> _showWelcomeAndNavigate(String name) async {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -111,7 +111,12 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: CyclixColors.accentGreen,
       ),
     );
-    Navigator.pushReplacementNamed(context, '/main');
+    final isMaintenance = await _authService.isMaintenanceUser();
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(
+      context,
+      isMaintenance ? '/maintenance' : '/main',
+    );
   }
 
   void login() async {

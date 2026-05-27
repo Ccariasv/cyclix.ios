@@ -35,6 +35,42 @@ class AuthService {
     return null;
   }
 
+  Future<Map<String, dynamic>?> getMyProfile() async {
+    final token = await getSavedToken();
+    if (token == null || token.isEmpty) return null;
+
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/profile/me'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('Error obteniendo perfil: $e');
+    }
+    return null;
+  }
+
+  Future<bool> isMaintenanceUser() async {
+    final userData = await getUserData();
+    final storedRole = userData?['role']?.toString().toUpperCase();
+    if (storedRole == 'MAINTENANCE') return true;
+
+    final profile = await getMyProfile();
+    final role = profile?['role']?.toString().toUpperCase();
+    if (role == 'MAINTENANCE') {
+      await _mergeUserData(profile!);
+      return true;
+    }
+    return false;
+  }
+
   Future<String?> getSavedToken() async {
     final token = await _storage.read(key: _authTokenKey);
     if (token != null && token.isNotEmpty) return token;
@@ -110,11 +146,13 @@ class AuthService {
 
         // Intentamos obtener los detalles completos del usuario desde la lista de la API
         final userDetails = await _fetchUserDetails(email, token);
+        final profile = await _fetchMyProfile(token);
 
         // Combinamos el token con los detalles encontrados (o los básicos si fallara)
         final Map<String, dynamic> fullData = {
           'email': email,
           'token': token,
+          ...?profile,
           ...?userDetails,
         };
 
@@ -129,6 +167,41 @@ class AuthService {
   }
 
   // Busca al usuario actual en la lista general de la API para obtener su nombre y teléfono
+  Future<void> _mergeUserData(Map<String, dynamic> newData) async {
+    final current = await getUserData() ?? <String, dynamic>{};
+    await _storage.write(
+      key: _userDataKey,
+      value: jsonEncode({...current, ...newData}),
+    );
+  }
+
+  Future<Map<String, dynamic>?> _fetchMyProfile(String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/profile/me'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final profile = jsonDecode(response.body) as Map<String, dynamic>;
+        final fullName = profile['fullName']?.toString() ?? '';
+        final parts = fullName.trim().split(RegExp(r'\s+'));
+        return {
+          ...profile,
+          if (parts.isNotEmpty && parts.first.isNotEmpty)
+            'firstName': parts.first,
+          if (parts.length > 1) 'lastName': parts.skip(1).join(' '),
+        };
+      }
+    } catch (e) {
+      debugPrint('Error al obtener perfil del usuario: $e');
+    }
+    return null;
+  }
+
   Future<Map<String, dynamic>?> _fetchUserDetails(
     String email,
     String token,
