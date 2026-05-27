@@ -117,14 +117,21 @@ class CyclixDrawer extends StatelessWidget {
                 );
               },
             ),
-            _DrawerTile(
-              icon: Icons.admin_panel_settings_outlined,
-              title: 'Administración API',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AdminApiScreen()),
+            FutureBuilder<Map<String, dynamic>?>(
+              future: AuthService().getUserData(),
+              builder: (context, snapshot) {
+                final role = snapshot.data?['role']?.toString().toUpperCase();
+                if (role != 'ADMIN') return const SizedBox.shrink();
+                return _DrawerTile(
+                  icon: Icons.admin_panel_settings_outlined,
+                  title: 'Administración API',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AdminApiScreen()),
+                    );
+                  },
                 );
               },
             ),

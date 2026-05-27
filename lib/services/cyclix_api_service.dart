@@ -178,6 +178,17 @@ class CyclixApiService {
     return _asMapList(data);
   }
 
+  Future<Map<String, dynamic>> topUpMyWallet({
+    required double amount,
+    String paymentMethod = 'CARD',
+  }) async {
+    final data = await post('/wallet/my/top-up', {
+      'amount': amount,
+      'paymentMethod': paymentMethod,
+    });
+    return _asMap(data);
+  }
+
   Future<Map<String, dynamic>> topUpWallet({
     required Object userId,
     required double amount,
@@ -260,6 +271,112 @@ class CyclixApiService {
   Future<List<Map<String, dynamic>>> getUsers() async {
     final data = await get('/get/user');
     return _asMapList(data);
+  }
+
+  Future<Map<String, dynamic>> assignUserRole({
+    required Object userId,
+    required String role,
+  }) async {
+    final data = await patch('/get/user/$userId/role', {'role': role});
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> createMaintenanceUser({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String phone,
+    required String password,
+  }) async {
+    final registerData = await post('/auth/register', {
+      'firstName': firstName,
+      'lastName': lastName,
+      'email': email,
+      'phone': phone,
+      'password': password,
+    });
+
+    Object? userId;
+    if (registerData is Map) {
+      userId = registerData['userId'];
+    }
+
+    if (userId == null) {
+      final normalizedEmail = email.trim().toLowerCase();
+      final users = await getUsers();
+      Map<String, dynamic>? created;
+      for (final user in users) {
+        if (user['email']?.toString().toLowerCase() == normalizedEmail) {
+          created = user;
+          break;
+        }
+      }
+      userId = created?['id'];
+    }
+
+    if (userId == null) {
+      throw const CyclixApiException(
+        'El usuario fue registrado, pero no se pudo localizar su id para asignar mantenimiento.',
+      );
+    }
+
+    return assignUserRole(userId: userId, role: 'MAINTENANCE');
+  }
+
+  Future<List<Map<String, dynamic>>> getMaintenanceUsers() async {
+    final users = await getUsers();
+    return users
+        .where(
+          (user) => user['role']?.toString().toUpperCase() == 'MAINTENANCE',
+        )
+        .toList();
+  }
+
+  Future<List<MaintenanceOrder>> getAdminMaintenanceOrders() async {
+    final data = await get('/admin/maintenance/orders');
+    return _asMapList(data).map(MaintenanceOrder.fromJson).toList();
+  }
+
+  Future<MaintenanceOrder> createAdminMaintenanceOrder({
+    required Object bikeId,
+    required String priority,
+    required String type,
+    required String reportedIssue,
+    Object? assignedToUserId,
+    int? estimatedMinutes,
+    String? currentLocation,
+  }) async {
+    final body = <String, dynamic>{
+      'bikeId': int.tryParse(bikeId.toString()) ?? bikeId,
+      'priority': priority,
+      'type': type,
+      'reportedIssue': reportedIssue,
+    };
+    if (assignedToUserId != null) {
+      body['assignedToUserId'] =
+          int.tryParse(assignedToUserId.toString()) ?? assignedToUserId;
+    }
+    if (estimatedMinutes != null) body['estimatedMinutes'] = estimatedMinutes;
+    if (currentLocation != null && currentLocation.trim().isNotEmpty) {
+      body['currentLocation'] = currentLocation.trim();
+    }
+
+    final data = await post('/admin/maintenance/orders', body);
+    return MaintenanceOrder.fromJson(_asMap(data));
+  }
+
+  Future<MaintenanceOrder> assignAdminMaintenanceOrder({
+    required Object id,
+    required Object assignedToUserId,
+    int? estimatedMinutes,
+  }) async {
+    final body = <String, dynamic>{
+      'assignedToUserId':
+          int.tryParse(assignedToUserId.toString()) ?? assignedToUserId,
+    };
+    if (estimatedMinutes != null) body['estimatedMinutes'] = estimatedMinutes;
+    final data = await put('/admin/maintenance/orders/$id/assign', body);
+    return MaintenanceOrder.fromJson(_asMap(data));
   }
 
   Future<List<MaintenanceOrder>> getMyMaintenanceOrders() async {

@@ -178,7 +178,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
     setState(() => _recharging = true);
     try {
-      await _api.topUpWallet(userId: wallet['userId'], amount: amount);
+      await _api.topUpMyWallet(
+        amount: amount,
+        paymentMethod: _apiPaymentMethod(selectedMethod),
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Saldo recargado correctamente.')),
@@ -187,11 +190,7 @@ class _WalletScreenState extends State<WalletScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'No se pudo recargar. El endpoint del API requiere permiso ADMIN. $e',
-          ),
-        ),
+        SnackBar(content: Text('No se pudo recargar el wallet. $e')),
       );
     } finally {
       if (mounted) setState(() => _recharging = false);
@@ -344,6 +343,14 @@ class _WalletScreenState extends State<WalletScreen> {
       body: content,
     );
   }
+}
+
+String _apiPaymentMethod(String selectedMethod) {
+  return switch (selectedMethod) {
+    'PAYPAL' => 'TRANSFER',
+    'TEST' => 'CASH',
+    _ => 'CARD',
+  };
 }
 
 class _RechargeMethodTile extends StatelessWidget {
