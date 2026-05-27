@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/cyclix_colors.dart';
 import '../widgets/cyclix_header.dart';
 import '../widgets/cyclix_primary_button.dart';
+import 'soporte_screen.dart';
 
 class AyudaScreen extends StatelessWidget {
   const AyudaScreen({super.key});
@@ -11,36 +12,24 @@ class AyudaScreen extends StatelessWidget {
     _PreguntaFrecuente(
       pregunta: '¿Cómo desbloqueo una bicicleta?',
       respuesta:
-      'Escanea el código QR que está en el manillar de la bicicleta con la app y sigue las instrucciones en pantalla.',
+          'Acerca tu teléfono al tag NFC de la bicicleta con la app abierta y sigue las instrucciones en pantalla.',
     ),
     _PreguntaFrecuente(
       pregunta: '¿Cómo se calcula el costo del viaje?',
       respuesta:
-      'El costo se calcula por minuto de uso desde que desbloqueas la bicicleta hasta que la devuelves a una estación.',
+          'El costo se calcula por minuto de uso desde que desbloqueas la bicicleta hasta que la devuelves a una estación.',
     ),
     _PreguntaFrecuente(
       pregunta: '¿Dónde puedo dejar la bicicleta?',
       respuesta:
-      'Debes dejarla en cualquiera de las estaciones marcadas en el mapa de la app para que el viaje finalice correctamente.',
+          'Debes dejarla en cualquiera de las estaciones marcadas en el mapa de la app para que el viaje finalice correctamente.',
     ),
     _PreguntaFrecuente(
       pregunta: '¿Qué hago si la bicicleta tiene un problema?',
       respuesta:
-      'Reporta el problema desde la sección Contacto o llama a nuestra línea de atención al cliente.',
+          'Reporta el problema desde la sección Contacto o llama a nuestra línea de atención al cliente.',
     ),
   ];
-
-  void _snack(BuildContext context, String mensaje) {
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensaje),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-        backgroundColor: CyclixColors.brandGreen,
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,15 +61,18 @@ class AyudaScreen extends StatelessWidget {
               Expanded(
                 child: ListView.separated(
                   itemCount: _faqs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 8),
                   itemBuilder: (context, i) => _FaqTile(faq: _faqs[i]),
                 ),
               ),
               const SizedBox(height: 20),
               CyclixPrimaryButton(
                 label: 'Contactar soporte',
-                onPressed: () =>
-                    _snack(context, 'Contactar soporte — próximamente'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SoporteScreen()),
+                ),
               ),
             ],
           ),
@@ -91,10 +83,7 @@ class AyudaScreen extends StatelessWidget {
 }
 
 class _PreguntaFrecuente {
-  const _PreguntaFrecuente({
-    required this.pregunta,
-    required this.respuesta,
-  });
+  const _PreguntaFrecuente({required this.pregunta, required this.respuesta});
   final String pregunta;
   final String respuesta;
 }

@@ -1,68 +1,68 @@
 import 'package:flutter/material.dart';
-
+import 'package:google_fonts/google_fonts.dart';
 import '../theme/cyclix_colors.dart';
 
 class CyclixHeader extends StatelessWidget implements PreferredSizeWidget {
   const CyclixHeader({super.key, this.showBack = false});
 
-  /// Si es true, muestra flecha atrás en lugar del menú hamburguesa.
   final bool showBack;
 
   @override
-  Size get preferredSize => const Size.fromHeight(56);
+  Size get preferredSize => const Size.fromHeight(64);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: CyclixColors.headerBorder, width: 2),
-          bottom: BorderSide(color: CyclixColors.headerBorder, width: 2),
-        ),
-        color: Colors.white,
+    return AppBar(
+      automaticallyImplyLeading: false,
+      toolbarHeight: 64,
+      backgroundColor: Colors.white,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      shape: const Border(
+        bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: SizedBox(
-          height: 52,
-          child: Row(
-            children: [
-              if (showBack)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, color: CyclixColors.brandGreen),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                )
-              else
-                IconButton(
-                  icon: const Icon(Icons.menu, color: CyclixColors.brandGreen),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Menú (pendiente de integración)')),
-                    );
-                  },
-                ),
-              Expanded(
-                child: Text(
-                  'Cyclix',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: CyclixColors.brandBlue,
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
+      leadingWidth: 64,
+      leading: Builder(
+        builder: (context) {
+          return Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: IconButton(
+              tooltip: showBack ? 'Volver' : 'Menú',
+              icon: Icon(
+                showBack ? Icons.arrow_back : Icons.menu,
+                color: CyclixColors.primaryBlue,
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Icon(
-                  Icons.pedal_bike,
-                  color: CyclixColors.brandGreen,
-                  size: 28,
-                ),
-              ),
-            ],
+              onPressed: () {
+                if (showBack) {
+                  Navigator.of(context).maybePop();
+                } else {
+                  Scaffold.maybeOf(context)?.openDrawer();
+                }
+              },
+            ),
+          );
+        },
+      ),
+      title: Text(
+        'Cyclix',
+        textAlign: TextAlign.center,
+        style: GoogleFonts.poppins(
+          color: CyclixColors.primaryBlue,
+          fontWeight: FontWeight.bold,
+          fontSize: 20,
+        ),
+      ),
+      centerTitle: true,
+      actions: const [
+        Padding(
+          padding: EdgeInsets.only(right: 16),
+          child: Icon(
+            Icons.pedal_bike,
+            color: CyclixColors.accentGreen,
+            size: 28,
           ),
         ),
-      ),
+      ],
     );
   }
 }
