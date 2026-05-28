@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/maintenance_order.dart';
 import '../services/cyclix_api_service.dart';
 import '../theme/cyclix_colors.dart';
+import '../widgets/cyclix_drawer.dart';
 
 class MaintenanceShell extends StatefulWidget {
   const MaintenanceShell({super.key});
@@ -43,7 +44,18 @@ class _MaintenanceShellState extends State<MaintenanceShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: CyclixColors.backgroundWhite,
-      appBar: _MaintenanceHeader(showMenu: true, onMenu: () {}),
+      drawer: const CyclixDrawer(),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(56),
+        child: Builder(
+          builder: (context) => _MaintenanceHeader(
+            showMenu: true,
+            onMenu: () {
+              Scaffold.of(context).openDrawer();
+            },
+          ),
+        ),
+      ),
       body: FutureBuilder<List<MaintenanceOrder>>(
         future: _ordersFuture,
         builder: (context, snapshot) {
