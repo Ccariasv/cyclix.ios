@@ -148,17 +148,20 @@ class CyclixDrawer extends StatelessWidget {
                     );
                   },
                 ),
-                _DrawerTile(
-                  icon: Icons.support_agent_outlined,
-                  title: 'Mis tickets',
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SoporteScreen()),
-                    );
-                  },
-                ),
+                if (!isMaintenance)
+                  _DrawerTile(
+                    icon: Icons.support_agent_outlined,
+                    title: 'Mis tickets',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const SoporteScreen(),
+                        ),
+                      );
+                    },
+                  ),
                 if (isAdmin)
                   _DrawerTile(
                     icon: Icons.admin_panel_settings_outlined,
