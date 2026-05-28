@@ -87,13 +87,7 @@ class _AdminApiScreenState extends State<AdminApiScreen> {
                           '${item['holidayDate']} · ${item['active'] == true ? 'Activo' : 'Inactivo'}',
                       bottomPadding: bottom,
                     ),
-                    _ApiList(
-                      future: _api.getSubscriptionPlans(),
-                      titleBuilder: (item) => item['name']?.toString() ?? '',
-                      subtitleBuilder: (item) =>
-                          'Q.${item['monthlyPrice']} · ${item['includedHours']} horas · ${item['active'] == true ? 'Activo' : 'Inactivo'}',
-                      bottomPadding: bottom,
-                    ),
+                    _SubscriptionPlansTab(api: _api, bottomPadding: bottom),
                   ],
                 ),
               ),
@@ -1026,6 +1020,352 @@ class _MetricGroup {
   final Map<String, dynamic> data;
 }
 
+class _SubscriptionPlansTab extends StatefulWidget {
+  const _SubscriptionPlansTab({required this.api, required this.bottomPadding});
+
+  final CyclixApiService api;
+  final double bottomPadding;
+
+  @override
+  State<_SubscriptionPlansTab> createState() => _SubscriptionPlansTabState();
+}
+
+class _SubscriptionPlansTabState extends State<_SubscriptionPlansTab> {
+  final _planFormKey = GlobalKey<FormState>();
+  final _assignFormKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _priceController = TextEditingController();
+  final _hoursController = TextEditingController();
+  late Future<_SubscriptionAdminData> _future;
+  Map<String, dynamic>? _editingPlan;
+  Object? _selectedUserId;
+  Object? _selectedPlanId;
+  bool _planActive = true;
+  bool _autoRenew = false;
+  bool _savingPlan = false;
+  bool _assigning = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _priceController.dispose();
+    _hoursController.dispose();
+    super.dispose();
+  }
+
+  Future<_SubscriptionAdminData> _load() async {
+    final users = await widget.api.getUsers();
+    final plans = await widget.api.getSubscriptionPlans();
+    return _SubscriptionAdminData(users: users, plans: plans);
+  }
+
+  void _reload() {
+    setState(() {
+      _future = _load();
+    });
+  }
+
+  void _editPlan(Map<String, dynamic> plan) {
+    setState(() {
+      _editingPlan = plan;
+      _nameController.text = plan['name']?.toString() ?? '';
+      _priceController.text = plan['monthlyPrice']?.toString() ?? '';
+      _hoursController.text = plan['includedHours']?.toString() ?? '';
+      _planActive = plan['active'] != false;
+    });
+  }
+
+  void _clearPlanForm() {
+    setState(() {
+      _editingPlan = null;
+      _nameController.clear();
+      _priceController.clear();
+      _hoursController.clear();
+      _planActive = true;
+    });
+  }
+
+  Future<void> _savePlan() async {
+    if (!_planFormKey.currentState!.validate() || _savingPlan) return;
+    final price = double.parse(
+      _priceController.text.trim().replaceAll(',', '.'),
+    );
+    final hours = int.parse(_hoursController.text.trim());
+    setState(() => _savingPlan = true);
+    try {
+      final editing = _editingPlan;
+      if (editing == null) {
+        await widget.api.createSubscriptionPlan(
+          name: _nameController.text.trim(),
+          monthlyPrice: price,
+          includedHours: hours,
+          active: _planActive,
+        );
+      } else {
+        await widget.api.updateSubscriptionPlan(
+          id: editing['id'],
+          name: _nameController.text.trim(),
+          monthlyPrice: price,
+          includedHours: hours,
+          active: _planActive,
+        );
+      }
+      _clearPlanForm();
+      _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Plan guardado correctamente.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No se pudo guardar. $e')));
+    } finally {
+      if (mounted) setState(() => _savingPlan = false);
+    }
+  }
+
+  Future<void> _assignPlan() async {
+    if (!_assignFormKey.currentState!.validate() || _assigning) return;
+    final userId = _selectedUserId;
+    final planId = _selectedPlanId;
+    if (userId == null || planId == null) return;
+
+    final now = DateTime.now();
+    final startsAt = DateTime(now.year, now.month, now.day);
+    final expiresAt = startsAt
+        .add(const Duration(days: 30))
+        .subtract(const Duration(seconds: 1));
+
+    setState(() => _assigning = true);
+    try {
+      await widget.api.assignSubscriptionPlan(
+        userId: userId,
+        planId: planId,
+        startsAt: startsAt,
+        expiresAt: expiresAt,
+        autoRenew: _autoRenew,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Plan asignado al usuario.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No se pudo asignar. $e')));
+    } finally {
+      if (mounted) setState(() => _assigning = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_SubscriptionAdminData>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return _AdminError(message: snapshot.error.toString());
+        }
+
+        final data = snapshot.data!;
+        final users = data.users
+            .where((user) => user['role']?.toString().toUpperCase() == 'USER')
+            .toList();
+
+        return ListView(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 24 + widget.bottomPadding),
+          children: [
+            _SectionPanel(
+              title: _editingPlan == null ? 'Crear plan' : 'Editar plan',
+              child: Form(
+                key: _planFormKey,
+                child: Column(
+                  children: [
+                    _TextInput(
+                      controller: _nameController,
+                      label: 'Nombre del plan',
+                      validator: _required,
+                    ),
+                    _TextInput(
+                      controller: _priceController,
+                      label: 'Precio mensual',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: _positiveDecimal,
+                    ),
+                    _TextInput(
+                      controller: _hoursController,
+                      label: 'Horas incluidas',
+                      keyboardType: TextInputType.number,
+                      validator: _positiveInt,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _planActive,
+                      activeThumbColor: CyclixColors.accentGreen,
+                      title: const Text('Plan activo'),
+                      onChanged: (value) => setState(() => _planActive = value),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _savingPlan ? null : _savePlan,
+                            icon: _savingPlan
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.save_outlined),
+                            label: Text(
+                              _editingPlan == null
+                                  ? 'Crear plan'
+                                  : 'Guardar cambios',
+                            ),
+                          ),
+                        ),
+                        if (_editingPlan != null) ...[
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: _clearPlanForm,
+                            child: const Text('Cancelar'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionPanel(
+              title: 'Asignar plan a usuario',
+              child: Form(
+                key: _assignFormKey,
+                child: Column(
+                  children: [
+                    DropdownButtonFormField<Object>(
+                      initialValue: _selectedUserId,
+                      decoration: _inputDecoration('Usuario'),
+                      items: users
+                          .map(
+                            (user) => DropdownMenuItem<Object>(
+                              value: user['id'],
+                              child: Text(
+                                '${user['firstName'] ?? ''} ${user['lastName'] ?? ''} · ${user['email']}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedUserId = value),
+                      validator: (value) =>
+                          value == null ? 'Selecciona usuario' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<Object>(
+                      initialValue: _selectedPlanId,
+                      decoration: _inputDecoration('Plan'),
+                      items: data.plans
+                          .where((plan) => plan['active'] != false)
+                          .map(
+                            (plan) => DropdownMenuItem<Object>(
+                              value: plan['id'],
+                              child: Text(
+                                '${plan['name']} · ${plan['includedHours']}h',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _selectedPlanId = value),
+                      validator: (value) =>
+                          value == null ? 'Selecciona plan' : null,
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _autoRenew,
+                      activeThumbColor: CyclixColors.accentGreen,
+                      title: const Text('Auto renovacion'),
+                      subtitle: const Text('Vigencia inicial de 30 dias'),
+                      onChanged: (value) => setState(() => _autoRenew = value),
+                    ),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _assigning ? null : _assignPlan,
+                        icon: _assigning
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.person_add_alt_1_outlined),
+                        label: const Text('Activar plan'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _SectionPanel(
+              title: 'Planes existentes',
+              child: Column(
+                children: [
+                  if (data.plans.isEmpty)
+                    const Text('No hay planes configurados.'),
+                  for (final plan in data.plans)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        plan['active'] == true
+                            ? Icons.check_circle_outline
+                            : Icons.pause_circle_outline,
+                        color: plan['active'] == true
+                            ? CyclixColors.accentGreen
+                            : CyclixColors.instructionGray,
+                      ),
+                      title: Text(plan['name']?.toString() ?? ''),
+                      subtitle: Text(
+                        'Q.${plan['monthlyPrice']} · ${plan['includedHours']} horas',
+                      ),
+                      trailing: IconButton(
+                        tooltip: 'Editar',
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () => _editPlan(plan),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _ApiList extends StatelessWidget {
   const _ApiList({
     required this.future,
@@ -1233,6 +1573,13 @@ class _MaintenanceAdminData {
   final List<MaintenanceOrder> orders;
 }
 
+class _SubscriptionAdminData {
+  const _SubscriptionAdminData({required this.users, required this.plans});
+
+  final List<Map<String, dynamic>> users;
+  final List<Map<String, dynamic>> plans;
+}
+
 InputDecoration _inputDecoration(String label) {
   return InputDecoration(
     labelText: label,
@@ -1265,6 +1612,20 @@ String? _emailValidator(String? value) {
 String? _passwordValidator(String? value) {
   final raw = value ?? '';
   if (raw.length < 8) return 'Minimo 8 caracteres';
+  return null;
+}
+
+String? _positiveDecimal(String? value) {
+  final raw = value?.trim().replaceAll(',', '.') ?? '';
+  final parsed = double.tryParse(raw);
+  if (parsed == null || parsed < 0) return 'Ingresa un monto valido';
+  return null;
+}
+
+String? _positiveInt(String? value) {
+  final raw = value?.trim() ?? '';
+  final parsed = int.tryParse(raw);
+  if (parsed == null || parsed <= 0) return 'Ingresa un numero mayor que 0';
   return null;
 }
 

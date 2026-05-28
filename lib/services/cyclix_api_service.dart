@@ -301,6 +301,87 @@ class CyclixApiService {
     return _asMapList(data);
   }
 
+  Future<List<Map<String, dynamic>>> getSubscriptionPlansForUser() async {
+    try {
+      final data = await get('/subscriptions/plans');
+      final plans = _asMapList(data);
+      if (plans.isNotEmpty) return plans;
+    } on CyclixApiException {
+      // El API actual expone planes solo para admin. La app mantiene catalogo
+      // demo para usuarios mientras backend habilita consulta publica.
+    }
+
+    try {
+      return await getSubscriptionPlans();
+    } on CyclixApiException {
+      return _demoSubscriptionPlans;
+    }
+  }
+
+  Future<Map<String, dynamic>> createSubscriptionPlan({
+    required String name,
+    required double monthlyPrice,
+    required int includedHours,
+    required bool active,
+  }) async {
+    final data = await post('/admin/subscriptions/plans', {
+      'name': name,
+      'monthlyPrice': monthlyPrice,
+      'includedHours': includedHours,
+      'active': active,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> updateSubscriptionPlan({
+    required Object id,
+    required String name,
+    required double monthlyPrice,
+    required int includedHours,
+    required bool active,
+  }) async {
+    final data = await put('/admin/subscriptions/plans/$id', {
+      'name': name,
+      'monthlyPrice': monthlyPrice,
+      'includedHours': includedHours,
+      'active': active,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> assignSubscriptionPlan({
+    required Object userId,
+    required Object planId,
+    required DateTime startsAt,
+    required DateTime expiresAt,
+    required bool autoRenew,
+  }) async {
+    final data = await post('/admin/subscriptions/assign', {
+      'userId': int.tryParse(userId.toString()) ?? userId,
+      'planId': int.tryParse(planId.toString()) ?? planId,
+      'startsAt': _localIso(startsAt),
+      'expiresAt': _localIso(expiresAt),
+      'autoRenew': autoRenew,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> requestSubscriptionPlan({
+    required Map<String, dynamic> plan,
+    required bool autoRenew,
+  }) {
+    final name = plan['name']?.toString() ?? 'Plan Cyclix';
+    final price = plan['monthlyPrice']?.toString() ?? '0.00';
+    final hours = plan['includedHours']?.toString() ?? '0';
+    return createTicket(
+      category: 'PAYMENT',
+      priority: 'MEDIUM',
+      title: 'Solicitud de suscripcion: $name',
+      description:
+          'Deseo contratar $name por Q.$price al mes. Incluye $hours horas. Auto renovacion: ${autoRenew ? 'si' : 'no'}.',
+    );
+  }
+
   Future<List<Map<String, dynamic>>> getAdminTrips() async {
     final data = await get('/admin/trips');
     return _asMapList(data);
@@ -654,6 +735,41 @@ class CyclixApiService {
     return _ClockTime(hour, minute);
   }
 }
+
+String _localIso(DateTime value) {
+  final local = value.toLocal();
+  String two(int number) => number.toString().padLeft(2, '0');
+  return '${local.year.toString().padLeft(4, '0')}-'
+      '${two(local.month)}-${two(local.day)}T'
+      '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+}
+
+const List<Map<String, dynamic>> _demoSubscriptionPlans = [
+  {
+    'id': 1,
+    'name': 'Plan Basico 20h',
+    'monthlyPrice': 100.00,
+    'includedHours': 20,
+    'active': true,
+    'demo': true,
+  },
+  {
+    'id': 2,
+    'name': 'Plan Plus 50h',
+    'monthlyPrice': 200.00,
+    'includedHours': 50,
+    'active': true,
+    'demo': true,
+  },
+  {
+    'id': 3,
+    'name': 'Plan Pro 100h',
+    'monthlyPrice': 350.00,
+    'includedHours': 100,
+    'active': true,
+    'demo': true,
+  },
+];
 
 class _ClockTime {
   const _ClockTime(this.hour, this.minute);
